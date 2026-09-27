@@ -1,0 +1,251 @@
+#include <SPI.h>
+#include <MFRC522.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+#define SS_PIN 10
+#define RST_PIN 9
+
+MFRC522 rfid(SS_PIN, RST_PIN);
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+#define IN1 7
+#define IN2 8
+#define ENA 6
+
+#define GREEN_LED 3
+#define RED_LED 4
+#define BUZZER 5
+
+byte authorizedUID[] = {0x40, 0xCA, 0x5B, 0x53};
+
+bool vehicleStarted = false;
+
+void oneBeep() {
+digitalWrite(BUZZER, HIGH);
+delay(200);
+digitalWrite(BUZZER, LOW);
+}
+
+void updateLEDs() {
+if (vehicleStarted) {
+digitalWrite(GREEN_LED, HIGH);
+digitalWrite(RED_LED, LOW);
+} else {
+digitalWrite(GREEN_LED, LOW);
+digitalWrite(RED_LED, HIGH);
+}
+}
+
+void startVehicle() {
+digitalWrite(ENA, HIGH);
+digitalWrite(IN1, HIGH);
+digitalWrite(IN2, LOW);
+
+vehicleStarted = true;
+updateLEDs();
+}
+
+void stopVehicle() {
+digitalWrite(IN1, LOW);
+digitalWrite(IN2, LOW);
+digitalWrite(ENA, LOW);
+
+vehicleStarted = false;
+updateLEDs();
+}
+
+bool isAuthorizedCard() {
+if (rfid.uid.size != 4) {
+return false;
+}
+
+for (byte i = 0; i < 4; i++) {
+if (rfid.uid.uidByte[i] != authorizedUID[i]) {
+return false;
+}
+}
+
+return true;
+}
+
+void showReadyScreen() {
+lcd.clear();
+
+lcd.setCursor(0, 0);
+lcd.print("READY TO START");
+
+lcd.setCursor(0, 1);
+lcd.print("TAP VEHICLE KEY");
+}
+
+void showRunningScreen() {
+lcd.clear();
+
+lcd.setCursor(0, 0);
+lcd.print("VEHICLE STARTED");
+
+lcd.setCursor(0, 1);
+lcd.print("TAP KEY TO STOP");
+}
+
+void wrongKeyAlarm() {
+digitalWrite(GREEN_LED, LOW);
+
+for (int i = 0; i < 5; i++) {
+digitalWrite(RED_LED, HIGH);
+digitalWrite(BUZZER, HIGH);
+
+```
+delay(300);
+
+digitalWrite(RED_LED, LOW);
+digitalWrite(BUZZER, LOW);
+
+delay(200);
+```
+
+}
+
+updateLEDs();
+}
+
+void showStartupScreens() {
+lcd.clear();
+
+lcd.setCursor(0, 0);
+lcd.print("SMART VEHICLE");
+
+lcd.setCursor(0, 1);
+lcd.print("IMMOBILIZER");
+
+delay(2000);
+
+lcd.clear();
+
+lcd.setCursor(0, 0);
+lcd.print("KEYLESS IGNITION");
+
+lcd.setCursor(0, 1);
+lcd.print("SYSTEM");
+
+delay(2000);
+}
+
+void setup() {
+Serial.begin(9600);
+
+pinMode(IN1, OUTPUT);
+pinMode(IN2, OUTPUT);
+pinMode(ENA, OUTPUT);
+
+pinMode(GREEN_LED, OUTPUT);
+pinMode(RED_LED, OUTPUT);
+pinMode(BUZZER, OUTPUT);
+
+stopVehicle();
+
+SPI.begin();
+rfid.PCD_Init();
+
+lcd.init();
+lcd.backlight();
+
+showStartupScreens();
+showReadyScreen();
+
+Serial.println("SMART VEHICLE READY");
+}
+
+void loop() {
+updateLEDs();
+
+if (!rfid.PICC_IsNewCardPresent()) {
+return;
+}
+
+if (!rfid.PICC_ReadCardSerial()) {
+return;
+}
+
+if (isAuthorizedCard()) {
+
+```
+Serial.println("AUTHORIZED VEHICLE KEY");
+
+if (!vehicleStarted) {
+
+  startVehicle();
+
+  lcd.clear();
+
+  lcd.setCursor(0, 0);
+  lcd.print("ACCESS GRANTED");
+
+  lcd.setCursor(0, 1);
+  lcd.print("VEHICLE STARTED");
+
+  oneBeep();
+
+  Serial.println("VEHICLE STARTED");
+
+  delay(2000);
+
+  showRunningScreen();
+
+} else {
+
+  stopVehicle();
+
+  lcd.clear();
+
+  lcd.setCursor(0, 0);
+  lcd.print("VEHICLE STOPPED");
+
+  lcd.setCursor(0, 1);
+  lcd.print("KEY ACCEPTED");
+
+  oneBeep();
+
+  Serial.println("VEHICLE STOPPED");
+
+  delay(2000);
+
+  showReadyScreen();
+}
+```
+
+} else {
+
+```
+Serial.println("WRONG VEHICLE KEY");
+
+lcd.clear();
+
+lcd.setCursor(0, 0);
+lcd.print("ACCESS DENIED");
+
+lcd.setCursor(0, 1);
+lcd.print("WRONG VEHICLE");
+
+wrongKeyAlarm();
+
+Serial.println("RED LED ALARM");
+Serial.println("BUZZER ALARM");
+
+delay(2000);
+
+if (vehicleStarted) {
+  showRunningScreen();
+} else {
+  showReadyScreen();
+}
+```
+
+}
+
+rfid.PICC_HaltA();
+rfid.PCD_StopCrypto1();
+
+delay(500);
+}
